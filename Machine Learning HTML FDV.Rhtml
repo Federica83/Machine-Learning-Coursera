@@ -1,0 +1,392 @@
+<'Practical Machine Learning assignment - Coursera Final Test
+Author: Federica De VincenziTitle>
+'
+
+<This code performs explores a range of Machine Learning techniques on the PML data>
+<The purpose of the code is to predict the Class variable on a Cross Validated sample>
+<Class is a multinomial factor variable so the model error is measured via decrease GINI impurity coefficient at predictor level and Accuracy at overall level>
+
+<p>This is an R HTML document. When you click the <b>Knit HTML</b> button a web page will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:</p>
+
+<
+rm(list = ls())
+
+'>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>'
+'>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> DATA VISUALIZATION >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>'
+'>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>'
+
+'Load all the Libraries'
+library(ElemStatLearn)
+library(randomForest)
+library(caret)
+library(ggplot2)
+library(DMwR)
+library(glmnet)
+library(e1071)
+library(rmarkdown)
+
+'Load the Data'
+dat <- read.csv(file='~/Desktop/ML/pml-training.csv', header=TRUE, sep=",")
+original=dat
+
+'Treat the Missing Data - Remove the variables with more than 90% missing values'
+anyNA(dat)
+thresh=sum(is.na(dat))/(nrow(dat)*ncol(dat))
+
+dat[dat=='#DIV/0!']<-NA
+dat[dat=='']<-NA
+
+a=rep(0,ncol(dat))
+
+for (i in 1:ncol(dat)){
+  b=sum(is.na(dat[,i]))
+  a[i]=b/nrow(dat)
+ }
+newdata=dat[,!a>0.9]
+newdata$classe=as.factor(newdata$classe)
+
+'Resample the data-base to create homogeneous training and testing set'
+set.seed(8484)
+train=sample(1:dim(newdata)[1],size=dim(newdata)[1]*0.75,replace = F)
+
+training=newdata[train,-1]
+testing=newdata[-train,-1]
+
+'>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>'
+'>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> PRE-PROCESSING >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>'
+'>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>'
+
+preproc=preProcess(training[,-59],method = 'pca')
+A=preproc$method$ignore
+B=preproc$method$scale
+C=preproc$method$center
+D=preproc$method$pca
+
+'print outcome'
+'Created from 14716 samples and 58 variables
+
+Pre-processing:
+  - centered (55)
+- ignored (3)
+- principal component signal extraction (55)
+- scaled (55)
+
+PCA needed 28 components to capture 95 percent of the variance'
+
+'I decide to ignore "user_name"      "cvtd_timestamp" "new_window" since outcome of the A matrix
+I also ignore "raw_timestamp_part_1" "raw_timestamp_part_2" since not meaningful'
+'All the other variables require to be scaled, centered and show signal to principal component'
+
+x=training[,6:58]
+scaled_training=scale(x,scale = TRUE,center = TRUE)
+
+preproc_scaled=preProcess(scaled_training,method = 'pca')
+
+'print outcome'
+'Created from 14716 samples and 53 variables
+
+Pre-processing:
+  - centered (53)
+- ignored (0)
+- principal component signal extraction (53)
+- scaled (53)
+
+PCA needed 27 components to capture 95 percent of the variance'
+
+'The preprocessing test on the scaled data set provides the same results of the pre-scaled dataset.
+This means that the variables issues do not belong to the mean and standard deviation but to other momentum distibution.
+By a graphical ispection of the variables histogram I can see that all the variables are far from being normal
+The principal component signal still stands but the data do not support the normality hypothesis to combine the predictors
+I will pursue a non parametric approach based on the features importance
+'
+new_training=training[,6:59]
+new_testing=testing[,6:59]
+
+'>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>'
+'>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> MODEL SELECTION >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>'
+'>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>'
+
+'The models will be ranked by Accuracy'
+
+'Model 1 DECISION TREE'
+'Rpart Method- Accuracy 0.4943'
+'features selected- roll_belt,pitch_forearm,magnet_dumbbell_y,roll_forearm'
+
+set.seed(125)
+modfit=train(classe~.,method='rpart',data=new_training)
+
+print(modfit$finalModel)
+fancyRpartPlot(modfit$finalModel)
+pred1=predict(modfit, new_testing)
+confusionMatrix(pred1,new_testing$classe)
+
+'Outcome print'
+'Confusion Matrix and Statistics
+
+Reference
+Prediction    A    B    C    D    E
+A 1282  398  352  380  120
+B   16  318   31  155  121
+C  101  250  429  303  250
+D    0    0    0    0    0
+E    4    0    0    0  396
+
+Overall Statistics
+
+Accuracy : 0.4943          
+95% CI : (0.4802, 0.5084)
+No Information Rate : 0.286           
+P-Value [Acc > NIR] : < 2.2e-16'  
+
+'Model 2 Bagging'
+'Bagging method- Accuracy - 0.9672'
+
+x=new_training[,-54]
+y=new_training$classe
+
+treebag=bag(x,y,B=10,bagControl=
+              bagControl(fit = ctreeBag$fit,predict = ctreeBag$pred,aggregate = ctreeBag$aggregate))
+pred2=predict(treebag, newdata = new_testing)
+confusionMatrix(pred2,new_testing$classe)
+
+'Outcome print'
+'Overall Statistics
+Accuracy : 0.9672         
+95% CI : (0.9618, 0.972)
+No Information Rate : 0.286          
+P-Value [Acc > NIR] : < 2e-16        
+
+Kappa : 0.9585         
+Mcnemars Test P-Value : 0.02276        
+
+Statistics by Class:
+  
+  Class: A Class: B Class: C Class: D Class: E
+Sensitivity            0.9829   0.9400   0.9618   0.9726   0.9718
+Specificity            0.9914   0.9886   0.9890   0.9931   0.9968
+Pos Pred Value         0.9787   0.9528   0.9455   0.9668   0.9851
+Neg Pred Value         0.9931   0.9853   0.9924   0.9943   0.9938
+Prevalence             0.2860   0.1969   0.1655   0.1708   0.1808
+Detection Rate         0.2811   0.1851   0.1592   0.1661   0.1757
+Detection Prevalence   0.2872   0.1943   0.1684   0.1718   0.1784
+Balanced Accuracy      0.9872   0.9643   0.9754   0.9828   0.9843'
+
+'Model 3A Boosting'
+'GBM method- Accuracy 0.9812'
+
+modfit4=train(classe~.,method='gbm',data=new_training)
+pred4=predict(modfit4,newdata=new_testing)
+C_boosting=confusionMatrix(pred4,new_testing$classe)
+diag(C_boosting$table)
+
+'Outcome print'
+'Confusion Matrix and Statistics
+
+Reference
+Prediction    A    B    C    D    E
+A 1398   13    0    3    0
+B    5  934    7    5    4
+C    0   17  803   11    4
+D    0    2    1  818   18
+E    0    0    1    1  861
+'
+'Overall Statistics
+
+Accuracy : 0.9812          
+95% CI : (0.9771, 0.9849)
+No Information Rate : 0.286           
+P-Value [Acc > NIR] : < 2.2e-16       
+
+Kappa : 0.9763          
+Mcnemars Test P-Value : NA              
+
+Statistics by Class:
+
+Class: A Class: B Class: C Class: D Class: E
+Sensitivity            0.9964   0.9669   0.9889   0.9761   0.9707
+Specificity            0.9954   0.9947   0.9922   0.9948   0.9995
+Pos Pred Value         0.9887   0.9780   0.9617   0.9750   0.9977
+Neg Pred Value         0.9986   0.9919   0.9978   0.9951   0.9936
+Prevalence             0.2860   0.1969   0.1655   0.1708   0.1808'
+
+'Model 3B Boosting'
+'LDA method- Accuracy 0.7181'
+
+modfit5=train(classe~.,method='lda',data=new_training)
+pred5=predict(modfit5,newdata=new_testing)
+confusionMatrix(pred5,new_testing$classe)
+
+'Outcome print'
+'Confusion Matrix and Statistics
+
+Reference
+Prediction    A    B    C    D    E
+A 1160  137   89   43   37
+B   36  629   71   28  111
+C   87  109  525  112   76
+D  113   44   95  631   85
+E    7   47   32   24  578
+
+Overall Statistics
+
+Accuracy : 0.7181          
+95% CI : (0.7053, 0.7307)
+No Information Rate : 0.286           
+P-Value [Acc > NIR] : < 2.2e-16       
+
+Kappa : 0.643           
+Mcnemars Test P-Value : < 2.2e-16       
+
+Statistics by Class:
+
+Class: A Class: B Class: C Class: D Class: E
+Sensitivity            0.8268   0.6511   0.6466   0.7530   0.6516
+Specificity            0.9126   0.9376   0.9062   0.9172   0.9726
+Pos Pred Value         0.7913   0.7189   0.5776   0.6519   0.8401
+Neg Pred Value         0.9294   0.9164   0.9282   0.9474   0.9267'
+
+'Model 4 Random Forest'
+'Random Forest method -Accuracy 0.9965'
+
+set.seed(100)
+modfit3 <-randomForest(classe~ ., data = new_training,
+                       ntree = 2000,
+                       importance = TRUE)
+pred3=predict(modfit3,newdata=new_testing)
+
+C_RF=confusionMatrix(pred3,new_testing$classe)
+diag(C_RF$table)
+
+Imp=as.data.frame(modfit3$importance)
+Imp=Imp[order(Imp$MeanDecreaseGini),]
+
+'Outcome print'
+'Confusion Matrix and Statistics
+
+Reference
+Prediction    A    B    C    D    E
+A 1402    5    0    0    0
+B    0  960    1    0    0
+C    0    1  811    2    0
+D    0    0    0  836    7
+E    1    0    0    0  880'
+
+'Overall Statistics
+                                         
+Accuracy : 0.9965         
+95% CI : (0.9945, 0.998)
+No Information Rate : 0.286          
+P-Value [Acc > NIR] : < 2.2e-16      
+
+Kappa : 0.9956         
+Mcnemars Test P-Value : NA             
+
+Statistics by Class:
+  
+  Class: A Class: B Class: C Class: D Class: E
+Sensitivity            0.9993   0.9938   0.9988   0.9976   0.9921
+Specificity            0.9986   0.9997   0.9993   0.9983   0.9998
+Pos Pred Value         0.9964   0.9990   0.9963   0.9917   0.9989
+Neg Pred Value         0.9997   0.9985   0.9998   0.9995   0.9983
+Prevalence             0.2860   0.1969   0.1655   0.1708   0.1808
+Detection Rate         0.2858   0.1957   0.1653   0.1704   0.1794
+Detection Prevalence   0.2868   0.1959   0.1659   0.1718   0.1796
+Balanced Accuracy      0.9989   0.9968   0.9990   0.9979   0.9959'
+
+'Conclusion'
+'Random Forest model is the winner with an Accuracy of 0.9965'
+'The model is highly accurate but could result overfitting over the validation sample. 
+The features importance matrix has been stored for variable reduction purposes'
+
+'>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>'
+'>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> PARAMETERS-TUNING >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>'
+'>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>'
+
+'several threshold over the MeanDecreaseAccuracy variabeìles to reduce the regressors size and observe if any variable
+can be dropped from the final model'
+'sequential threshold have been used from 0.01 to 0.09 with a 0.01 step'
+'no loop has been implemented for this purpose, as a result the 0.08 threshold is chosen'
+
+
+'Reduced Model Accuracy 0.9988 with threshold 0.08'
+'the shortlisted data-set reduces the numbers of predictors from 53 to 8- the overall accuracy increases from 0.9965 to 0.9988'
+
+Shortlist=c(rownames(subset(Imp,Imp$MeanDecreaseAccuracy>0.08)),'classe')
+
+reduced_training=new_training[,Shortlist]
+reduced_testing=new_testing[,Shortlist]
+
+set.seed(100)
+modfit3R <-randomForest(classe~ ., data = reduced_training,
+                        ntree = 2000,
+                        importance = TRUE)
+
+pred3R=predict(modfit3R,newdata=reduced_testing)
+confusionMatrix(pred3R,new_testing$classe)
+
+'Outcome print'
+'Confusion Matrix and Statistics
+
+Reference
+Prediction    A    B    C    D    E
+A 1402    0    0    0    0
+B    0  966    1    0    1
+C    1    0  811    1    0
+D    0    0    0  837    2
+E    0    0    0    0  884
+
+Overall Statistics
+
+Accuracy : 0.9988          
+95% CI : (0.9973, 0.9996)
+No Information Rate : 0.286           
+P-Value [Acc > NIR] : < 2.2e-16       
+Kappa : 0.9985          
+Mcnemars Test P-Value : NA              
+
+Statistics by Class:
+
+Class: A Class: B Class: C Class: D Class: E
+Sensitivity            0.9993   1.0000   0.9988   0.9988   0.9966
+Specificity            1.0000   0.9995   0.9995   0.9995   1.0000
+Pos Pred Value         1.0000   0.9979   0.9975   0.9976   1.0000
+Neg Pred Value         0.9997   1.0000   0.9998   0.9998   0.9993
+Prevalence             0.2860   0.1969   0.1655   0.1708   0.1808
+Detection Rate         0.2858   0.1969   0.1653   0.1706   0.1802
+Detection Prevalence   0.2858   0.1973   0.1657   0.1710   0.1802
+Balanced Accuracy      0.9996   0.9997   0.9991   0.9992   0.9983'
+
+'The result is good enough. As a further check I create a control over the predictors correlation to 
+double check if any outstanding relaionship is in between the highly informative variables'
+
+C=cor(reduced_training[,-9])
+diag(C)=0
+max(C) '0.81556 between roll belt and yaw belt'
+min(C) '-0.7647 between magnet dumbell y and magnet dumbell x'
+
+hist(reduced_training$roll_belt) 'Bimodal distribution - positive values'
+hist(reduced_training$yaw_belt)  'Left Skewed distribution - negative values'
+hist(reduced_training$magnet_dumbbell_x) 'Left Skewed distribution - negative values'
+hist(reduced_training$magnet_dumbbell_y) 'Outliers - negative values'
+
+a=scale(reduced_training$roll_belt,scale=TRUE,center = TRUE)
+b=scale(reduced_training$yaw_belt,scale=TRUE,center = TRUE)
+c=scale(reduced_training$magnet_dumbbell_x,scale=TRUE,center = TRUE)
+d=scale(reduced_training$magnet_dumbbell_y,scale=TRUE,center = TRUE)
+
+hist(a)
+hist(b)
+hist(c)
+hist(d)
+
+'The data distribution is far from being normal. Logaritmic trasformations are not applicable and 
+to standardize the data does not improve the histogram shapes. The data should be adjustes for skewneses and kurtosis.
+For this reason a principal component approach to furtherly reduce the highly correlated data cannot be pursued as the data stand.
+Since a straightforward trasformation does not provide any imporvement a non parametric approach is endorsed'
+
+'The final model is a Random Forest on the shortlisted predictors
+"magnet_dumbbell_x" "roll_forearm"      "pitch_belt"        "magnet_dumbbell_y" "magnet_dumbbell_z" "yaw_belt"         
+"roll_belt"         "num_window"'
+end.rcode-->
+
+
